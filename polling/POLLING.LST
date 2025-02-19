@@ -1,0 +1,128 @@
+Turbo Assembler	 Version 4.1	    02/20/25 00:41:47	    Page 1
+polling.asm
+
+
+
+      1				     ;-----------------------------------------------------------------------------------------------
+      2				     -------------------
+      3				     ;This program read	port 60h in cycle
+      4				     ;-----------------------------------------------------------------------------------------------
+      5				     -------------------
+      6				     ;					      program
+      7
+      8	0000			     .model tiny   ;64 kilobytes in RAM, address == 16 bit == 2	bytes (because:	sizeof (register) ==+
+      9				     2 bytes)
+     10
+     11				     ;-----------------------------------------------------------------------------------------------
+     12				     ---------------
+     13				     ;										     main program
+     14				     ;-----------------------------------------------------------------------------------------------
+     15				     ---------------
+     16
+     17	0000			     .code	   ;begin program
+     18				     org 100h	   ;start == 256:   jmp	start == jmp 256 != jmp	0 (because address [0;255] in	    +
+     19				     program segment in	DOS for	PSP)
+     20	0100			     start:
+     21	0100  BF B800			     mov di, 0b800h	;video segmentf
+     22	0103  8E C7			     mov es, di		;register es for segment address of video memory  (es != const	  es+
+     23				     ==	reg)
+     24
+     25	0105  BF 0370			     mov di, 5*80*2 + 40*2    ;address of point	for print in video_memory
+     26
+     27	0108  8A 26 0000r		     mov ah, color	      ;color of	symbol
+     28
+     29	010C  E8 0005			     call check_next_symbol_from_keyboard
+     30
+     31	010F  B8 4C00			     mov ax, 4c00h	;end of	program	with returned code = 0
+     32	0112  CD 21			     int 21h		;call system
+     33				     ;-----------------------------------------------------------------------------------------------
+     34				     ---------------
+     35
+     36				     ;-----------------------------------------------------------------------------------------------
+     37				     ---------------
+     38				     ;												    +
+     39				     check_next_symbol_from_keyboard
+     40				     ;check symbol from	keyboard and print it or ret from func	 (ASCII	of print symbol	== scan	code+
+     41				     from keyboard)
+     42				     ;
+     43				     ;Entry: ah	= color
+     44				     ;		     di	= address of point in video memory (in video segment)
+     45				     ;		     es	= address of video segment
+     46				     ;
+     47				     ;Exit:  None
+     48				     ;
+     49				     ;Destr: al	= symbol
+     50				     ;-----------------------------------------------------------------------------------------------
+     51				     ---------------
+     52
+     53	0114			     check_next_symbol_from_keyboard proc
+     54
+     55	0114				     next_symbol:
+     56	0114  E4 60				     in	al, 60h	    ;scan code from keyboard	-->   ASCII code of symbol in port  +
+     57				     60h  == scan code from keyboard  -->    ASCII code	of symbol in al
+Turbo Assembler	 Version 4.1	    02/20/25 00:41:47	    Page 2
+polling.asm
+
+
+
+     58
+     59	0116  26: 89 05				     mov es:[di], ax   ;print symbol from keyboard in video memory    (ASCII of	    +
+     60				     print symbol == scan code from keyboard)
+     61
+     62	0119  3C 01				     cmp al, 01d
+     63	011B  75 F7				     jne next_symbol   ;if (al == ESC):	goto next_symbol
+     64
+     65	011D  C3			     ret
+     66	011E				     endp
+     67				     ;-----------------------------------------------------------------------------------------------
+     68				     ---------------
+     69
+     70				     ;-----------------------------------------------------------------------------------------------
+     71				     ---------------
+     72				     ;					    variables
+     73	011E			     .data
+     74	0000  5B		     color db 01011011b
+     75						 ;bBBBFFFF   b == blink;  B == back ground;  F == for ground
+     76						 ; rgbIRGB   r/R == red;  g/G == green;	 b/B ==	blue;  I == increase
+     77
+     78				     ;-----------------------------------------------------------------------------------------------
+     79				     ---------------
+     80
+     81				     ;-----------------------------------------------------------------------------------------------
+     82				     ---------------
+     83				     end start		    ;end of asm	and address of program's beginning
+Turbo Assembler	 Version 4.1	    02/20/25 00:41:47	    Page 3
+Symbol Table
+
+
+
+
+Symbol Name			  Type	 Value
+
+??DATE				  Text	 "02/20/25"
+??FILENAME			  Text	 "polling "
+??TIME				  Text	 "00:41:47"
+??VERSION			  Number 040A
+@32BIT				  Text	 0
+@CODE				  Text	 DGROUP
+@CODESIZE			  Text	 0
+@CPU				  Text	 0101H
+@CURSEG				  Text	 _DATA
+@DATA				  Text	 DGROUP
+@DATASIZE			  Text	 0
+@FILENAME			  Text	 POLLING
+@INTERFACE			  Text	 000H
+@MODEL				  Text	 1
+@STACK				  Text	 DGROUP
+@WORDSIZE			  Text	 2
+CHECK_NEXT_SYMBOL_FROM_KEYBOARD	  Near	 DGROUP:0114
+COLOR				  Byte	 DGROUP:0000
+NEXT_SYMBOL			  Near	 DGROUP:0114
+START				  Near	 DGROUP:0100
+
+Groups & Segments		  Bit Size Align  Combine Class
+
+DGROUP				  Group
+  _DATA				  16  0001 Word	  Public  DATA
+  _TEXT				  16  011E Word	  Public  CODE
+
