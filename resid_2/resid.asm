@@ -15,7 +15,7 @@ start:
 	xor ax, ax
 	mov es, ax       ;es = 0
 
-	mov bx, 0009h*4  ;bx = address on 9th interrupt
+	mov bx, 0009h*0004d  ;bx = address on 9th interrupt
 	int 09h          ;call old 9th interrupt
 
 	mov ax, es:[bx]

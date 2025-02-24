@@ -41,10 +41,29 @@ start:
 
 	mov dx, offset end_of_program  
 	shr dx, 4
-	inc dx               ;dx = (address of program's end)/4 + 1
+	inc dx               ;dx = (address of program's end)/16 + 1
 
 	int 21h              ;call 21th interrupt  (end work of CPU)
 ;--------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ;--------------------------------------------------------------------------------------------------------------
 ;											 new_9th_interrupt
@@ -78,7 +97,9 @@ new_9th_interrupt proc
 	mov di, 0b800h     ;video segment
 	mov es, di         ;register es for segment address of video memory  (es != const    es == reg)
 	
-	call count_left_high_point   
+	call count_left_high_point  
+
+	push di   ;save di for print registers 
 
 	mov ah, color     ;ah = color   
 
@@ -88,6 +109,23 @@ new_9th_interrupt proc
 	sub cx, 0002d     ;cx = x_size - 2 = len of str with recurring symbol 
 
 	call print_frame  
+
+    mov si, offset list_of_registers    ;si = address on list of registers 
+
+	pop di
+	add di, 0080d * 0002d + 0002d * 0002d  ;di == address of beginning
+
+	mov cx, quantity_of_registers   ;cx = how many registers program must print
+
+	mov bx,  sp        
+	add bx, 0002d        ;bx = sp + quantity_of_registers * 0002d   - by this address in stack on ax. After on bx, cx, dx, ..., es  
+
+	print_next_register:
+	call print_list_of_reg
+
+	sub bx, 0002d                 ;address in stack for value next register
+
+	loop print_next_register      ;while (cx--) {print_next_register ();s}
 
 	do_old_9th_interrupt:           ;skip new_9th_interrupt
 
@@ -108,6 +146,35 @@ new_9th_interrupt proc
     
 	endp    
 ;--------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ;--------------------------------------------------------------------------------------------------------------
 ;											 count_left_high_point
@@ -141,13 +208,13 @@ count_left_high_point proc
 	mov ax, y_size
 	shr ax, 1
 	mov cx, y_center
-	sub cx, ax      ;cx = 0008d - y_size / 2
+	sub cx, ax        ;cx = 0008d - y_size / 2
 
 	mov ax, 0160d
 	mul cx
-	mov di, ax      ;di = cx * 0160d = 0002d * 0080d * (0008d - y_size / 2)   - high point
+	mov di, ax        ;di = cx * 0160d = 0002d * 0080d * (0008d - y_size / 2)   - high point
 
-	add di, si      ;di = 0002d*0080d*(0008d - y_size / 2) + 0002d*(0038d - x_size / 2) - left high point in Video memory 
+	add di, si        ;di = 0002d*0080d*(0008d - y_size / 2) + 0002d*(0038d - x_size / 2) - left high point in Video memory 
 
 	ret     
 	endp   
@@ -214,25 +281,27 @@ print_line proc
 
 	push cx      ;save len of str with recurring symbol 
 
-	mov al, ds:[si]    ;al = the first symbol in set
-	inc si
+	lodsb				;mov al, ds:[si]    ;al = the first symbol in set
+						;inc si
 
-	mov word ptr es:[di], ax   ;put symbol and his color (ax) in video memory by address = es[di]
-	add di, 2
+	stosw				;mov word ptr es:[di], ax   ;put symbol and his color (ax) in video memory by address = es[di]
+						;add di, 2
 
-	mov al, ds:[si]    ;al = the second symbol in set
-	inc si
+	lodsb				;mov al, ds:[si]    ;al = the second symbol in set
+						;inc si
 
-	next_symbol:  ; while (cx--) {printf ("%c", ax);}    //ax = second symbol with color 
-		mov word ptr es:[di], ax
-		add di, 2
-		loop next_symbol
+	next_symbol:   
+
+	stosw		;mov word ptr es:[di], ax
+				;add di, 2
+
+	loop next_symbol   ; while (cx--) {printf ("%c", ax);}    //ax = second symbol with color 
 	
-	mov al, ds:[si]     ;al = the third symbol in set
-	inc si
+	lodsb		;mov al, ds:[si]     ;al = the third symbol in set
+				;inc si
 
-	mov word ptr es:[di], ax
-	add di, 2
+	stosw		;mov word ptr es:[di], ax
+				;add di, 2
 
 	pop cx
 
@@ -244,6 +313,188 @@ print_line proc
 	endp    
 ;--------------------------------------------------------------------------------------------------------------
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;--------------------------------------------------------------------------------------------------------------
+;											 print_list_of_reg
+;Print value of register in frame
+;
+;Entry: ah = color
+;		di = address of point in video memory (in video segment)
+;		si = address on list of registers 
+;       bx = address in stack for value of register  
+;       ss = segment address of stack       
+;       es = segment address of video memory                               
+;
+;Exit:  di = di + 0080d*0002d ('\n')
+;       si = address on new name of register 
+;
+;Destr: al = symbol
+;		di = shifting address of point in video memory (in video segment)
+;		si = shifting address on set of symbols in names of all registers
+;--------------------------------------------------------------------------------------------------------------
+
+print_list_of_reg proc    
+
+	push di
+	push cx     ;old cx = index_for_registers_in_list, new cx = index_for_symbols_in_name => save cx
+
+	mov cx, quantity_symbols_in_name_of_register
+
+	next_symbol_in_name_of_register:
+
+	lodsb							;mov al, ds:[si]    ;al = the symbol in register's name from list of registers
+									;inc si
+
+	stosw							;mov word ptr es:[di], ax   ;put symbol and his color (ax) in video memory by address = es[di]
+									;add di, 2
+
+	loop next_symbol_in_name_of_register
+
+	;-----------------------------------------------------------------------------------------------------------
+	;print("%c%c = ", name_register[0], name_register[1]); 
+
+	call print_value_reg  ;print value of register
+
+	pop cx
+
+	pop di
+	add di, 0080d*0002d  ;di = di + 0080d*0002d ('\n')
+
+	ret     
+	endp    
+;--------------------------------------------------------------------------------------------------------------
+
+;--------------------------------------------------------------------------------------------------------------
+;											 print_value_reg
+;Print value of register in frame
+;
+;Entry: ah = color
+;		bx = address in stack for value of register
+;		ss = segment address of stack  
+;		di = address of point in video memory (in video segment)  
+;       es = segment address of video memory                               
+;
+;Exit:  None
+;
+;Destr: al = symbol
+;		di = shifting address of point in video memory (in video segment)
+;
+;--------------------------------------------------------------------------------------------------------------
+print_value_reg proc                                      ;register =  |_ _ _ _ | _ _ _ _ | _ _ _ _ | _ _ _ _|
+;																	   |  high     lou    |  high      lou   |
+;																	   |                  |                  |
+;                                                                      |____high half_____|____lou half______|
+
+	mov al, ss:[bx]    ;al = lou half of register
+
+	shr al, 4          ;high half in al
+
+	call translate_value_in_al_to_ascii     ;al = ascii of print_number
+
+	stosw			;mov word ptr es:[di], ax   ;put symbol and his color (ax) in video memory by address = es[di]
+					;add di, 2
+			
+	;------------------------------------------------------------------------------------------------------------------------
+
+	mov al, ss:[bx]    ;al = lou half of register
+
+	and al, 0Fh        ;lou half in al
+
+	call translate_value_in_al_to_ascii    ;al = ascii of print_number
+
+	stosw			;mov word ptr es:[di], ax   ;put symbol and his color (ax) in video memory by address = es[di]
+					;add di, 2
+
+	;------------------------------------------------------------------------------------------------------------------------
+
+	mov al, ss:[bx+1]    ;al = high half of register
+
+	shr al, 4            ;high half in al
+
+	call translate_value_in_al_to_ascii       ;al = ascii of print_number
+
+	stosw			;mov word ptr es:[di], ax   ;put symbol and his color (ax) in video memory by address = es[di]
+					;add di, 2
+			
+	;------------------------------------------------------------------------------------------------------------------------
+
+	mov al, ss:[bx+1]    ;al = high half of register
+ 
+	and al, 0Fh          ;lou half in al
+	
+	call translate_value_in_al_to_ascii       ;al = ascii of print_number
+
+	stosw			;mov word ptr es:[di], ax   ;put symbol and his color (ax) in video memory by address = es[di]
+					;add di, 2
+
+	ret     
+	endp  
+	
+;--------------------------------------------------------------------------------------------------------------
+
+;--------------------------------------------------------------------------------------------------------------
+;											 translate_value_in_al_to_ascii
+;Take value from al and translate it in symbol in ascii (For example: 1 -> '1', 10 -> 'a')
+;
+;Entry: al = value of print_number                             
+;
+;Exit:  al = ascii of print_number
+;
+;Destr: al = number -> ascii
+;		
+;--------------------------------------------------------------------------------------------------------------
+translate_value_in_al_to_ascii proc
+
+	cmp al, 0010d
+	js al_is_number
+
+	;al_is_latter:
+	sub al, 0010d
+	add al, 'a'
+	ret
+
+	al_is_number:
+	add al, '0'
+	ret 
+
+	endp  
+	
+;--------------------------------------------------------------------------------------------------------------
+
 ;--------------------------------------------------------------------------------------------------------------
 ;                                      variables
 .data 
@@ -253,15 +504,20 @@ color db 01011011b
 
 scan_code_of_hot_key db 02d    ;hot key == '1'
 
-x_size dw 0020d   ;horizontal sizes of frame
-y_size dw 0005d   ;vertical   sizes of frame
+x_size dw 0036d   ;horizontal sizes of frame
+y_size dw 0014d   ;vertical   sizes of frame
 
 
 ;center point:   0080d*(0008d)*0002d + 0002d*(0038d)
 x_center dw 0038d
-y_center dw 0008d
+y_center dw 0010d
 
-frame_style db '123456789'
+frame_style db '         '
+
+quantity_symbols_in_name_of_register dw 0005d
+quantity_of_registers dw 0008d
+
+list_of_registers db 'ax = bx = cx = dx = si = di = ds = es = '
 
 ;--------------------------------------------------------------------------------------------------------------
 
