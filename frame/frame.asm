@@ -91,8 +91,11 @@ new_9th_interrupt proc
  
 	in al, 60h   ;al = scan code of last key from 60th port
 
-	cmp al, scan_code_of_hot_key
-	jne do_old_9th_interrupt       ;if (al != scan_code_of_hot_key): goto do_old_9th_interrupt
+	;-----------------------------------------------------------------------------------------------------------
+	;check_for_print_frame:
+
+	cmp al, scan_code_of_hot_key_for_print_frame
+	jne check_for_delete_frame       ;if (al != scan_code_of_hot_key): goto check_for_delete_frame
 		
 	mov di, 0b800h     ;video segment
 	mov es, di         ;register es for segment address of video memory  (es != const    es == reg)
@@ -127,6 +130,34 @@ new_9th_interrupt proc
 
 	loop print_next_register      ;while (cx--) {print_next_register ();s}
 
+	jmp do_old_9th_interrupt       ;end print frame
+
+	;---------------------------------------------------------------------------------------------------------------
+	check_for_delete_frame:
+
+	cmp al, scan_code_of_hot_key_for_delete_frame
+	jne do_old_9th_interrupt       ;if (al != scan_code_of_hot_key): goto do_old_9th_interrupt
+
+	;press 1th 'ESC' == clear command line
+	;press 2th 'ESC' == turn off Volkov Commander
+	;press 3th 'ESC' == turn on  Volkov Commander  => Volkov Commander clears video memory and deletes frame with registers
+
+	mov ah, 05h    
+	mov ch, 01h
+	mov cl, 27d
+	int 16h           ;int 16h 05h  -->  ch = 01h = scan code of 'ESC'
+					  ;                  cl = 27d = ascii     of 'ESC'
+	;mov ah, 05h
+	;mov ch, 01h
+	;mov cl, 27d
+	int 16h
+                          
+	;mov ah, 05h
+	;mov ch, 01h
+	;mov cl, 27d
+	int 16h             ;end delete frame 
+
+	;---------------------------------------------------------------------------------------------------------------
 	do_old_9th_interrupt:           ;skip new_9th_interrupt
 
 	pop es
@@ -502,7 +533,8 @@ color db 01011011b
 	    ;bBBBFFFF	b == blink;  B == back ground;  F == for ground       
 	    ; rgbIRGB	r/R == red;  g/G == green;  b/B == blue;  I == increase
 
-scan_code_of_hot_key db 02d    ;hot key == '1'
+scan_code_of_hot_key_for_print_frame db 02d    ;hot key for print frame  == '1'
+scan_code_of_hot_key_for_delete_frame db 03d   ;hot key for delete frame == '2'
 
 x_size dw 0036d   ;horizontal sizes of frame
 y_size dw 0014d   ;vertical   sizes of frame
