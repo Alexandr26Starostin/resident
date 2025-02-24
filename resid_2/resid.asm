@@ -1,5 +1,5 @@
 ;------------------------------------------------------------------------------------------------------------------
-;This program is the first version of resident and it changes 9th interrupt from old to new
+;This program is the second version of resident and it call new and after old 9th interrupt
 ;------------------------------------------------------------------------------------------------------------------
 ;                                        program
 
@@ -48,7 +48,7 @@ start:
 
 ;--------------------------------------------------------------------------------------------------------------
 ;											 new_9th_interrupt
-;Has code for new 9th interrupt, that can print key in video memory
+;Has code for new 9th interrupt, that can print key in video memory and after calls old 9th interrupt
 ;Entry: None                                      
 ;
 ;Exit:  None
