@@ -46,7 +46,7 @@ check_next_symbol_from_keyboard proc
 		mov es:[di], ax   ;print symbol from keyboard in video memory    (ASCII of print symbol == scan code from keyboard)
 
 		cmp al, 01d
-		jne next_symbol   ;if (al == ESC): goto next_symbol
+		jne next_symbol   ;if (al != ESC): goto next_symbol
 
 	ret     
 	endp    
