@@ -54,7 +54,7 @@ start:
 
 	cli     ;CPU cannot work with interrupts
 
-	mov es:[bx], offset change_8th_interrupt    ;es:[bx] = address on new 8th interrupt
+	mov es:[bx], offset new_8th_interrupt    ;es:[bx] = address on new 8th interrupt
 
 	push cs
 	pop ax     ;ax = cs (segment of our code and code with new 8th interrupt)
@@ -118,19 +118,22 @@ new_9th_interrupt proc
 
 	push cs
 	pop ds     ;ds = cs
-
-	;push ax
  
 	in al, 60h   ;al = scan code of last key from 60th port
 
 	;-----------------------------------------------------------------------------------------------------------
 	;check_for_print_frame:
 
-	cmp al, scan_code_of_hot_key_for_print_frame
-	jne check_for_delete_frame       ;if (al != scan_code_of_hot_key): goto check_for_delete_frame
+	cmp flag_for_drawing_frame, 1               
+	je  update_frame                   ;if (flag_for_drawing_frame == 1): {goto update_frame;}
+		
 
-	;pop ax                          ;draw old value of ax
-	mov flag_for_drawing_frame, 1
+	cmp al, scan_code_of_hot_key_for_print_frame
+	jne do_old_9th_interrupt          ;if (al != scan_code_of_hot_key): goto check_for_delete_frame
+
+	mov flag_for_drawing_frame, 1     ;give information, that he can print frame
+
+	update_frame:
 	
 	mov di, 0b800h     ;video segment
 	mov es, di         ;register es for segment address of video memory  (es != const    es == reg)
@@ -169,35 +172,7 @@ new_9th_interrupt proc
 
 	loop print_next_register      ;while (cx--) {print_next_register ();}
 
-	jmp do_old_9th_interrupt       ;end print frame
-
-	;---------------------------------------------------------------------------------------------------------------
-	check_for_delete_frame:
-
-	cmp al, scan_code_of_hot_key_for_delete_frame
-	jne do_old_9th_interrupt       ;if (al != scan_code_of_hot_key): goto do_old_9th_interrupt
-
-	;press 1th 'ESC' == clear command line
-	;press 2th 'ESC' == turn off Volkov Commander
-	;press 3th 'ESC' == turn on  Volkov Commander  => Volkov Commander clears video memory and deletes frame with registers
-
-	mov ah, 05h    
-	mov ch, 01h
-	mov cl, 27d
-	int 16h           ;int 16h 05h  -->  ch = 01h = scan code of 'ESC'
-					  ;                  cl = 27d = ascii     of 'ESC'
-	;mov ah, 05h
-	;mov ch, 01h
-	;mov cl, 27d
-	int 16h
-                          
-	;mov ah, 05h
-	;mov ch, 01h
-	;mov cl, 27d
-	int 16h             
-	
-	mov flag_for_drawing_frame, 0          ;end delete frame 
-
+	;end print frame
 	;---------------------------------------------------------------------------------------------------------------
 	do_old_9th_interrupt:           ;skip new_9th_interrupt
 
@@ -211,6 +186,14 @@ new_9th_interrupt proc
 	pop ax
 	
 	;end of new 9th interrupt
+
+	cmp call_int_09h_from_int_o8h, 0001h    ;if (call_int_09h_from_int_o8h == 0) {goto continue_do_9th_interrupt;}
+	jne continue_do_9th_interrupt           ;if int 09h from keyboard, do old int 09h, that print key
+											;if int 09h from int 08h,  update frame and don't work with keys
+
+	iret       ;if int 09h from int 08h -> don't work with keys
+
+	continue_do_9th_interrupt:    ;if int 09h from keyboard  -> do old int 09h
 	
 	db 0eah                                  
 	address_of_old_9th_interrupt dw 0000h
@@ -551,15 +534,15 @@ print_value_reg proc                                      ;register =  |_ _ _ _ 
 ;--------------------------------------------------------------------------------------------------------------
 translate_value_in_al_to_ascii proc
 
-	cmp al, 0010d
+	cmp al, 0010d      ;if (al < 10)  ->  0 <= al <= 9
 	js al_is_number
 
-	;al_is_latter:
-	sub al, 0010d
+	;al_is_latter:     ;if (al >= 10)  ->  10 <= al <= 15  ->  'a' <= al - 10d + 'a' <= 'f'
+	sub al, 0010d      
 	add al, 'a'
 	ret
 
-	al_is_number:
+	al_is_number:     ;if (al < 10)  ->  0 <= al <= 9  ->  '0' <= al + '0' <= '9'
 	add al, '0'
 	ret 
 
@@ -603,9 +586,10 @@ translate_value_in_al_to_ascii proc
 
 
 ;--------------------------------------------------------------------------------------------------------------
-;											 change_8th_interrupt
+;											 new_8th_interrupt
 ;if (flag_for_drawing_frame == 1) {update_drawing_with_frame (); do_old_8th_interrupt}
 ;if (flag_for_drawing_frame == 0) {do_old_8th_interrupt}
+;doesn't print and work with keys if call int 09h
 ;
 ;Entry: None                                     
 ;
@@ -614,7 +598,7 @@ translate_value_in_al_to_ascii proc
 ;Destr: None
 ;--------------------------------------------------------------------------------------------------------------
 
-change_8th_interrupt proc     
+new_8th_interrupt proc     
 
 	push ax   
 	push bx
@@ -631,14 +615,38 @@ change_8th_interrupt proc
 	;-----------------------------------------------------------------------------------------------------------
 	;check_for_print_frame:
 
-	cmp flag_for_drawing_frame, 1   ;                           != 1
-	jmp do_old_8th_interrupt        ;if (flag_for_drawing_frame == 0): goto do_old_8th_interrupt
-		
+	mov call_int_09h_from_int_o8h, 0001h
+	int 09h									 ;call int 09h and give him information, that he cannot work with keys
+	mov call_int_09h_from_int_o8h, 0000h  
+
+	;-----------------------------------------------------------------------------------------------------------
+	;check_for_delete_frame:
+
+	in al, 60h   ;al = scan code of last key from 60th port
+
+	cmp al, scan_code_of_hot_key_for_delete_frame
+	jne do_old_8th_interrupt       ;if (al != scan_code_of_hot_key): goto do_old_9th_interrupt
+
+	;press 1th 'ESC' == clear command line
+	;press 2th 'ESC' == turn off Volkov Commander
+	;press 3th 'ESC' == turn on  Volkov Commander  => Volkov Commander clears video memory and deletes frame with registers
+
+	mov ah, 05h    
+	mov ch, 01h
+	mov cl, 27d
+	int 16h           ;int 16h 05h  -->  ch = 01h = scan code of 'ESC'
+					  ;                  cl = 27d = ascii     of 'ESC'
+	;mov ah, 05h
+	;mov ch, 01h
+	;mov cl, 27d
+	int 16h
+                          
+	;mov ah, 05h
+	;mov ch, 01h
+	;mov cl, 27d
+	int 16h             
 	
-
-
-
-
+	mov flag_for_drawing_frame, 0          ;end delete frame and give int 09h information, that he cannot print frame
 
 	;---------------------------------------------------------------------------------------------------------------
 	do_old_8th_interrupt:           ;skip new_8th_interrupt
@@ -727,6 +735,9 @@ list_of_registers db 'ax = bx = cx = dx = si = di = ds = es = '
 
 flag_for_drawing_frame dw 0000h  ;flag == 1  -> 8th interrupt draw new frame (update of frame) and do old 8th interrupt
 								 ;flag == 0  -> only do old 8th interrupt
+
+call_int_09h_from_int_o8h dw 0000h    ; == 1  -> call 9th from 8th
+									  ; == 0  -> call 9th from keyboard
 
 ;--------------------------------------------------------------------------------------------------------------
 
