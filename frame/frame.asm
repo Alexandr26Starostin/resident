@@ -13,10 +13,13 @@
 org 100h      ;start == 256:   jmp start == jmp 256 != jmp 0 (because address [0;255] in program segment in DOS for PSP)
 start:
 	xor ax, ax
-	mov es, ax       ;es = 0
+	mov es, ax       ;es = 0    ;es = segment address of table with interrupts
+
+	;--------------------------------------------------------------------------------------------------------
+	;                                initialization of 9th interrupt
 
 	mov bx, 0009h*4  ;bx = address on 9th interrupt
-	int 09h          ;call old 9th interrupt
+	;int 09h          ;call old 9th interrupt
 
 	mov ax, es:[bx]
 	mov address_of_old_9th_interrupt, ax  ;save address of old 9th interrupt
@@ -35,7 +38,34 @@ start:
 
 	sti       ;CPU can work with interrupts   
 
-	int 09h   ;call new 9th interrupt
+	;int 09h   ;call new 9th interrupt
+
+	;---------------------------------------------------------------------------------------------------------
+	;                                initialization of 8th interrupt
+
+	mov bx, 0008h*4  ;bx = address on 8th interrupt
+	;int 08h          ;call old 8th interrupt
+
+	mov ax, es:[bx]
+	mov address_of_old_8th_interrupt, ax  ;save address of old 8th interrupt
+
+	mov ax, es:[bx+2]
+	mov segment_of_old_8th_interrupt, ax  ;save segment of old 8th interrupt
+
+	cli     ;CPU cannot work with interrupts
+
+	mov es:[bx], offset change_8th_interrupt    ;es:[bx] = address on new 8th interrupt
+
+	push cs
+	pop ax     ;ax = cs (segment of our code and code with new 8th interrupt)
+ 	
+	mov es:[bx+2], ax    ;es:[bx+2] in table with interrupts = cs (segment address, where is code with new 8th interrupt)
+
+	sti       ;CPU can work with interrupts   
+
+	;int 08h   ;call new 9th interrupt
+
+	;---------------------------------------------------------------------------------------------------------
 
 	mov ax, 3100h       ;complete program, return 00h and save code in RAM from segment address in PSP in quantity = dx * 16 bytes
 
@@ -88,6 +118,8 @@ new_9th_interrupt proc
 
 	push cs
 	pop ds     ;ds = cs
+
+	;push ax
  
 	in al, 60h   ;al = scan code of last key from 60th port
 
@@ -96,7 +128,10 @@ new_9th_interrupt proc
 
 	cmp al, scan_code_of_hot_key_for_print_frame
 	jne check_for_delete_frame       ;if (al != scan_code_of_hot_key): goto check_for_delete_frame
-		
+
+	;pop ax                          ;draw old value of ax
+	mov flag_for_drawing_frame, 1
+	
 	mov di, 0b800h     ;video segment
 	mov es, di         ;register es for segment address of video memory  (es != const    es == reg)
 	
@@ -120,7 +155,7 @@ new_9th_interrupt proc
 
 	mov cx, quantity_of_registers   ;cx = how many registers program must print
 
-	push ax
+	push ax           ;save ax
 	mov bx,  sp   
 	mov ax, quantity_of_registers
 	shl ax, 1
@@ -159,7 +194,9 @@ new_9th_interrupt proc
 	;mov ah, 05h
 	;mov ch, 01h
 	;mov cl, 27d
-	int 16h             ;end delete frame 
+	int 16h             
+	
+	mov flag_for_drawing_frame, 0          ;end delete frame 
 
 	;---------------------------------------------------------------------------------------------------------------
 	do_old_9th_interrupt:           ;skip new_9th_interrupt
@@ -530,6 +567,139 @@ translate_value_in_al_to_ascii proc
 	
 ;--------------------------------------------------------------------------------------------------------------
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+;--------------------------------------------------------------------------------------------------------------
+;											 change_8th_interrupt
+;if (flag_for_drawing_frame == 1) {update_drawing_with_frame (); do_old_8th_interrupt}
+;if (flag_for_drawing_frame == 0) {do_old_8th_interrupt}
+;
+;Entry: None                                     
+;
+;Exit:  None
+;
+;Destr: None
+;--------------------------------------------------------------------------------------------------------------
+
+change_8th_interrupt proc     
+
+	push ax   
+	push bx
+	push cx 
+	push dx
+	push si
+	push di
+	push ds
+	push es    ;save registers
+
+	push cs
+	pop ds     ;ds = cs
+
+	;-----------------------------------------------------------------------------------------------------------
+	;check_for_print_frame:
+
+	cmp flag_for_drawing_frame, 1   ;                           != 1
+	jmp do_old_8th_interrupt        ;if (flag_for_drawing_frame == 0): goto do_old_8th_interrupt
+		
+	
+
+
+
+
+
+	;---------------------------------------------------------------------------------------------------------------
+	do_old_8th_interrupt:           ;skip new_8th_interrupt
+
+	pop es
+	pop ds
+	pop di
+	pop si
+	pop dx
+	pop cx
+	pop bx
+	pop ax
+	
+	;end of new 8th interrupt
+	
+	db 0eah                                  
+	address_of_old_8th_interrupt dw 0000h
+	segment_of_old_8th_interrupt dw 0000h    ;jmp segment_of_old_8th_interrupt:[address_of_old_8th_interrupt]    (call old 8th interrupt)
+    
+	endp    
+;--------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ;--------------------------------------------------------------------------------------------------------------
 ;                                      variables
 .data 
@@ -554,6 +724,9 @@ quantity_symbols_in_name_of_register dw 0005d
 quantity_of_registers dw 0008d
 
 list_of_registers db 'ax = bx = cx = dx = si = di = ds = es = '
+
+flag_for_drawing_frame dw 0000h  ;flag == 1  -> 8th interrupt draw new frame (update of frame) and do old 8th interrupt
+								 ;flag == 0  -> only do old 8th interrupt
 
 ;--------------------------------------------------------------------------------------------------------------
 
