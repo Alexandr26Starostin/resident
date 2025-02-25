@@ -120,15 +120,19 @@ new_9th_interrupt proc
 
 	mov cx, quantity_of_registers   ;cx = how many registers program must print
 
-	mov bx,  sp        
-	add bx, 0002d        ;bx = sp + quantity_of_registers * 0002d   - by this address in stack on ax. After on bx, cx, dx, ..., es  
+	push ax
+	mov bx,  sp   
+	mov ax, quantity_of_registers
+	shl ax, 1
+	add bx, ax        ;bx = sp + quantity_of_registers * 0002d   - by this address in stack on ax. After on bx, cx, dx, ..., es  
+	pop ax
 
 	print_next_register:
 	call print_list_of_reg
 
 	sub bx, 0002d                 ;address in stack for value next register
 
-	loop print_next_register      ;while (cx--) {print_next_register ();s}
+	loop print_next_register      ;while (cx--) {print_next_register ();}
 
 	jmp do_old_9th_interrupt       ;end print frame
 
@@ -446,11 +450,11 @@ print_list_of_reg proc
 ;
 ;--------------------------------------------------------------------------------------------------------------
 print_value_reg proc                                      ;register =  |_ _ _ _ | _ _ _ _ | _ _ _ _ | _ _ _ _|
-;																	   |  high     lou    |  high      lou   |
+;																	   |  high     low    |  high      low   |
 ;																	   |                  |                  |
-;                                                                      |____high half_____|____lou half______|
+;                                                                      |____high half_____|____low half______|
 
-	mov al, ss:[bx]    ;al = lou half of register
+	mov al, ss:[bx]    ;al = low half of register
 
 	shr al, 4          ;high half in al
 
@@ -461,9 +465,9 @@ print_value_reg proc                                      ;register =  |_ _ _ _ 
 			
 	;------------------------------------------------------------------------------------------------------------------------
 
-	mov al, ss:[bx]    ;al = lou half of register
+	mov al, ss:[bx]    ;al = low half of register
 
-	and al, 0Fh        ;lou half in al
+	and al, 0Fh        ;low half in al
 
 	call translate_value_in_al_to_ascii    ;al = ascii of print_number
 
@@ -485,7 +489,7 @@ print_value_reg proc                                      ;register =  |_ _ _ _ 
 
 	mov al, ss:[bx+1]    ;al = high half of register
  
-	and al, 0Fh          ;lou half in al
+	and al, 0Fh          ;low half in al
 	
 	call translate_value_in_al_to_ascii       ;al = ascii of print_number
 
