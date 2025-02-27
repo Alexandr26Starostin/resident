@@ -120,6 +120,20 @@ new_9th_interrupt proc
 
 	push cs
 	pop ds     ;ds = cs
+	
+	in al, 60h   ;al = scan code of last key from 60th port
+
+	;-----------------------------------------------------------------------------------------------------------
+	;check_for_print_frame:
+		
+	cmp al, scan_code_of_hot_key_for_print_frame
+	jne check_for_delete_frame                   ;if (al != scan_code_of_hot_key): goto check_for_delete_frame
+	
+	;-----------------------------------------------------------------
+	;     				new block
+
+	cmp flag_for_drawing_frame, 1
+	je do_old_9th_interrupt
 
 	mov di, 0b800h     ;video segment
 	mov es, di         ;register es for segment address of video memory  (es != const    es == reg)
@@ -127,33 +141,6 @@ new_9th_interrupt proc
 	call count_left_high_point
 
 	mov begin_of_frame_in_video_memory, di
-
-	;jmp debug
-
-	
-	in al, 60h   ;al = scan code of last key from 60th port
-
-	;-----------------------------------------------------------------------------------------------------------
-	;check_for_print_frame:
-
-	cmp flag_for_drawing_frame, 1               
-	je  update_frame                   ;if (flag_for_drawing_frame == 1): {goto update_frame;}
-		
-
-	cmp al, scan_code_of_hot_key_for_print_frame
-	jne do_old_9th_interrupt          ;if (al != scan_code_of_hot_key): goto check_for_delete_frame
-	
-	;-----------------------------------------------------------------
-	;     				new block
-
-	cmp call_int_09h_from_int_o8h, 0001h    ;if (call_int_09h_from_int_o8h == 0) {goto continue_do_9th_interrupt;}
-	je  skip_save_video_memory
-
-	debug:
-
-	nop 
-	nop
-	nop
 
 	push di       ;save di for print frame
 
@@ -163,13 +150,7 @@ new_9th_interrupt proc
 
 	pop di
 
-	nop 
-	nop
-	nop
-
 	;---------------------------------------------------------------
-
-	update_frame:
 
 	push di   ;save di for print registers 
 
@@ -205,9 +186,32 @@ new_9th_interrupt proc
 
 	mov flag_for_drawing_frame, 1     ;give information, that he can print frame
 
-	skip_save_video_memory:
-	
+	jmp do_old_9th_interrupt
+
 	;end print frame
+	;-----------------------------------------------------------------------------------------------------------
+
+	check_for_delete_frame:
+
+	in al, 60h   ;al = scan code of last key from 60th port
+
+	cmp al, scan_code_of_hot_key_for_delete_frame
+	jne do_old_9th_interrupt       ;if (al != scan_code_of_hot_key): goto do_old_9th_interrupt
+
+	mov di, 0b800h     ;video segment
+	mov es, di         ;register es for segment address of video memory  (es != const    es == reg)
+
+	call count_left_high_point
+
+	mov begin_of_frame_in_video_memory, di
+
+	mov si, offset buffer
+
+	call write_old_video_memory      
+	
+	mov flag_for_drawing_frame, 0          
+
+	;end delete frame
 	;---------------------------------------------------------------------------------------------------------------
 	do_old_9th_interrupt:           ;skip new_9th_interrupt
 
@@ -221,14 +225,6 @@ new_9th_interrupt proc
 	pop ax
 	
 	;end of new 9th interrupt
-
-	cmp call_int_09h_from_int_o8h, 0001h    ;if (call_int_09h_from_int_o8h == 0) {goto continue_do_9th_interrupt;}
-	jne continue_do_9th_interrupt           ;if int 09h from keyboard, do old int 09h, that print key
-											;if int 09h from int 08h,  update frame and don't work with keys
-
-	iret       ;if int 09h from int 08h -> don't work with keys
-
-	continue_do_9th_interrupt:    ;if int 09h from keyboard  -> do old int 09h
 	
 	db 0eah                                  
 	address_of_old_9th_interrupt dw 0000h
@@ -240,17 +236,14 @@ new_9th_interrupt proc
 
 
 
+	
 
 
 
 
 
 
-
-
-
-
-
+	
 
 
 
@@ -650,58 +643,52 @@ new_8th_interrupt proc
 	;-----------------------------------------------------------------------------------------------------------
 	;check_for_print_frame:
 
-	mov call_int_09h_from_int_o8h, 0001h
-	int 09h									 ;call int 09h and give him information, that he cannot work with keys
-	mov call_int_09h_from_int_o8h, 0000h  
+	;mov call_int_09h_from_int_o8h, 0001h
+	;int 09h									 ;call int 09h and give him information, that he cannot work with keys
+	;mov call_int_09h_from_int_o8h, 0000h  
 
-	;-----------------------------------------------------------------------------------------------------------
-	;check_for_delete_frame:
-
-	in al, 60h   ;al = scan code of last key from 60th port
-
-	cmp al, scan_code_of_hot_key_for_delete_frame
-	jne do_old_8th_interrupt       ;if (al != scan_code_of_hot_key): goto do_old_9th_interrupt
-
-	nop
-	nop
-	nop
+	cmp flag_for_drawing_frame, 0               
+	je  do_old_8th_interrupt                   ;if (flag_for_drawing_frame == 1): {goto update_frame;}
 
 	mov di, 0b800h     ;video segment
 	mov es, di         ;register es for segment address of video memory  (es != const    es == reg)
+	
+	call count_left_high_point
 
 	mov begin_of_frame_in_video_memory, di
 
-	mov si, offset buffer
 
-	call write_old_video_memory
+	push di   ;save di for print registers 
 
-	nop 
-	nop
-	nop
+	mov ah, color     ;ah = color   
 
+	mov si, offset frame_style  ;si = address on style of frame
 
+	mov cx, x_size
+	sub cx, 0002d     ;cx = x_size - 2 = len of str with recurring symbol 
 
+	call print_frame  
 
-	;press 1th 'ESC' == clear command line
-	;press 2th 'ESC' == turn off Volkov Commander
-	;press 3th 'ESC' == turn on  Volkov Commander  => Volkov Commander clears video memory and deletes frame with registers
+    mov si, offset list_of_registers    ;si = address on list of registers 
 
-	;mov ah, 05h    
-	;mov ch, 01h
-	;mov cl, 27d
-	;int 16h           ;int 16h 05h  -->  ch = 01h = scan code of 'ESC'
-					  ;                  cl = 27d = ascii     of 'ESC'
-	;mov ah, 05h
-	;mov ch, 01h
-	;mov cl, 27d
-	;int 16h
-                          
-	;mov ah, 05h
-	;mov ch, 01h
-	;mov cl, 27d
-	;int 16h             
-	
-	mov flag_for_drawing_frame, 0          ;end delete frame and give int 09h information, that he cannot print frame
+	pop di
+	add di, 0080d * 0002d + 0002d * 0002d  ;di == address of beginning
+
+	mov cx, quantity_of_registers   ;cx = how many registers program must print
+
+	push ax           ;save ax
+	mov bx,  sp   
+	mov ax, quantity_of_registers
+	shl ax, 1
+	add bx, ax        ;bx = sp + quantity_of_registers * 0002d   - by this address in stack on ax. After on bx, cx, dx, ..., es  
+	pop ax
+
+	print_next_register_for_update:
+	call print_list_of_reg
+
+	sub bx, 0002d                 ;address in stack for value next register
+
+	loop print_next_register_for_update      ;while (cx--) {print_next_register ();}
 
 	;---------------------------------------------------------------------------------------------------------------
 	do_old_8th_interrupt:           ;skip new_8th_interrupt
