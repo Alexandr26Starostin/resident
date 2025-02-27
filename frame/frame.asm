@@ -12,6 +12,8 @@
 .code         ;begin program
 org 100h      ;start == 256:   jmp start == jmp 256 != jmp 0 (because address [0;255] in program segment in DOS for PSP)
 start:
+	;---------------------------------------------------------------------------------------------------------
+
 	xor ax, ax
 	mov es, ax       ;es = 0    ;es = segment address of table with interrupts
 
@@ -19,7 +21,7 @@ start:
 	;                                initialization of 9th interrupt
 
 	mov bx, 0009h*4  ;bx = address on 9th interrupt
-	;int 09h          ;call old 9th interrupt
+	;int 09h         ;call old 9th interrupt
 
 	mov ax, es:[bx]
 	mov address_of_old_9th_interrupt, ax  ;save address of old 9th interrupt
@@ -38,7 +40,7 @@ start:
 
 	sti       ;CPU can work with interrupts   
 
-	;int 09h   ;call new 9th interrupt
+	int 09h   ;call new 9th interrupt
 
 	;---------------------------------------------------------------------------------------------------------
 	;                                initialization of 8th interrupt
@@ -63,7 +65,7 @@ start:
 
 	sti       ;CPU can work with interrupts   
 
-	;int 08h   ;call new 9th interrupt
+	int 08h   ;call new 8th interrupt
 
 	;---------------------------------------------------------------------------------------------------------
 
@@ -118,7 +120,17 @@ new_9th_interrupt proc
 
 	push cs
 	pop ds     ;ds = cs
- 
+
+	mov di, 0b800h     ;video segment
+	mov es, di         ;register es for segment address of video memory  (es != const    es == reg)
+	
+	call count_left_high_point
+
+	mov begin_of_frame_in_video_memory, di
+
+	;jmp debug
+
+	
 	in al, 60h   ;al = scan code of last key from 60th port
 
 	;-----------------------------------------------------------------------------------------------------------
@@ -130,15 +142,34 @@ new_9th_interrupt proc
 
 	cmp al, scan_code_of_hot_key_for_print_frame
 	jne do_old_9th_interrupt          ;if (al != scan_code_of_hot_key): goto check_for_delete_frame
+	
+	;-----------------------------------------------------------------
+	;     				new block
 
-	mov flag_for_drawing_frame, 1     ;give information, that he can print frame
+	cmp call_int_09h_from_int_o8h, 0001h    ;if (call_int_09h_from_int_o8h == 0) {goto continue_do_9th_interrupt;}
+	je  skip_save_video_memory
+
+	debug:
+
+	nop 
+	nop
+	nop
+
+	push di       ;save di for print frame
+
+	mov si, offset buffer
+
+	call save_video_memory
+
+	pop di
+
+	nop 
+	nop
+	nop
+
+	;---------------------------------------------------------------
 
 	update_frame:
-	
-	mov di, 0b800h     ;video segment
-	mov es, di         ;register es for segment address of video memory  (es != const    es == reg)
-	
-	call count_left_high_point  
 
 	push di   ;save di for print registers 
 
@@ -172,6 +203,10 @@ new_9th_interrupt proc
 
 	loop print_next_register      ;while (cx--) {print_next_register ();}
 
+	mov flag_for_drawing_frame, 1     ;give information, that he can print frame
+
+	skip_save_video_memory:
+	
 	;end print frame
 	;---------------------------------------------------------------------------------------------------------------
 	do_old_9th_interrupt:           ;skip new_9th_interrupt
@@ -627,24 +662,44 @@ new_8th_interrupt proc
 	cmp al, scan_code_of_hot_key_for_delete_frame
 	jne do_old_8th_interrupt       ;if (al != scan_code_of_hot_key): goto do_old_9th_interrupt
 
+	nop
+	nop
+	nop
+
+	mov di, 0b800h     ;video segment
+	mov es, di         ;register es for segment address of video memory  (es != const    es == reg)
+
+	mov begin_of_frame_in_video_memory, di
+
+	mov si, offset buffer
+
+	call write_old_video_memory
+
+	nop 
+	nop
+	nop
+
+
+
+
 	;press 1th 'ESC' == clear command line
 	;press 2th 'ESC' == turn off Volkov Commander
 	;press 3th 'ESC' == turn on  Volkov Commander  => Volkov Commander clears video memory and deletes frame with registers
 
-	mov ah, 05h    
-	mov ch, 01h
-	mov cl, 27d
-	int 16h           ;int 16h 05h  -->  ch = 01h = scan code of 'ESC'
+	;mov ah, 05h    
+	;mov ch, 01h
+	;mov cl, 27d
+	;int 16h           ;int 16h 05h  -->  ch = 01h = scan code of 'ESC'
 					  ;                  cl = 27d = ascii     of 'ESC'
 	;mov ah, 05h
 	;mov ch, 01h
 	;mov cl, 27d
-	int 16h
+	;int 16h
                           
 	;mov ah, 05h
 	;mov ch, 01h
 	;mov cl, 27d
-	int 16h             
+	;int 16h             
 	
 	mov flag_for_drawing_frame, 0          ;end delete frame and give int 09h information, that he cannot print frame
 
@@ -677,6 +732,118 @@ new_8th_interrupt proc
 
 
 
+
+
+
+;--------------------------------------------------------------------------------------------------------------
+;											 save_video_memory
+;save video memory in buffer before printing frame
+;
+;Entry: di = address in video_memory for beginning of frame
+;       es = segment address on video_memory
+;		si = index in buffer
+;       ds = segment address of buffer		1
+;
+;Exit:  None
+;
+;Destr: di 
+;		si
+;		
+;--------------------------------------------------------------------------------------------------------------
+save_video_memory proc
+	push cx
+
+	mov cx, y_size
+
+	save_new_line:
+
+		push cx
+
+		mov cx, x_size
+		push di
+
+		save_next_symbol_in_line:
+
+		mov ax, word ptr es:[di]
+		add di, 2    
+
+		mov word ptr ds:[si], ax
+		add si, 2 
+
+		loop save_next_symbol_in_line
+
+		pop di
+		add di, 0080d * 0002d    ;'\n'
+
+		pop cx 
+
+	loop save_new_line
+
+	pop cx
+
+	ret 
+	endp  
+						
+;--------------------------------------------------------------------------------------------------------------
+
+
+
+
+
+
+
+
+
+;--------------------------------------------------------------------------------------------------------------
+;											 write_old_video_memory
+;save video memory in buffer before printing frame
+;
+;Entry: di = address in video_memory for beginning of frame
+;       es = segment address on video_memory
+;		si = index in buffer
+;       ds = segment address of buffer		
+;
+;Exit:  None
+;
+;Destr: di 
+;		si
+;		
+;--------------------------------------------------------------------------------------------------------------
+write_old_video_memory proc
+	push cx
+
+	mov cx, y_size
+
+	write_new_line:
+
+		push cx
+
+		mov cx, x_size
+		push di
+
+		write_next_symbol_in_line:
+
+		mov ax,  word ptr ds:[si]
+		add si, 2    
+
+		mov word ptr es:[di], ax
+		add di, 2 
+
+		loop write_next_symbol_in_line
+
+		pop di
+		add di, 0080d * 0002d    ;'\n'
+
+		pop cx 
+
+	loop write_new_line
+
+	pop cx
+
+	ret 
+	endp  
+						
+;--------------------------------------------------------------------------------------------------------------
 
 
 
@@ -738,6 +905,10 @@ flag_for_drawing_frame dw 0000h  ;flag == 1  -> 8th interrupt draw new frame (up
 
 call_int_09h_from_int_o8h dw 0000h    ; == 1  -> call 9th from 8th
 									  ; == 0  -> call 9th from keyboard
+
+buffer dw 0036d * 0014d * 0002d dup (0)     ;buffer for saving of video memory
+
+begin_of_frame_in_video_memory dw 0000h
 
 ;--------------------------------------------------------------------------------------------------------------
 
