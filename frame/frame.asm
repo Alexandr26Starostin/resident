@@ -40,7 +40,7 @@ start:
 
 	sti       ;CPU can work with interrupts   
 
-	int 09h   ;call new 9th interrupt
+	;int 09h   ;call new 9th interrupt
 
 	;---------------------------------------------------------------------------------------------------------
 	;                                initialization of 8th interrupt
@@ -78,25 +78,6 @@ start:
 	int 21h              ;call 21th interrupt  (end work of CPU)
 ;--------------------------------------------------------------------------------------------------------------
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ;--------------------------------------------------------------------------------------------------------------
 ;											 new_9th_interrupt
 ;Has code for new 9th interrupt, that can print key in video memory and after calls old 9th interrupt
@@ -108,6 +89,8 @@ start:
 ;--------------------------------------------------------------------------------------------------------------
 
 new_9th_interrupt proc     
+
+	mov position_in_9th_interrupt, 1
 
 	push ax   
 	push bx
@@ -140,7 +123,7 @@ new_9th_interrupt proc
 	
 	call count_left_high_point
 
-	mov begin_of_frame_in_video_memory, di
+	;mov begin_of_frame_in_video_memory, di
 
 	push di       ;save di for print frame
 
@@ -193,10 +176,10 @@ new_9th_interrupt proc
 
 	check_for_delete_frame:
 
-	in al, 60h   ;al = scan code of last key from 60th port
-
 	cmp al, scan_code_of_hot_key_for_delete_frame
 	jne do_old_9th_interrupt       ;if (al != scan_code_of_hot_key): goto do_old_9th_interrupt
+
+	mov flag_for_drawing_frame, 0 
 
 	mov di, 0b800h     ;video segment
 	mov es, di         ;register es for segment address of video memory  (es != const    es == reg)
@@ -207,9 +190,7 @@ new_9th_interrupt proc
 
 	mov si, offset buffer
 
-	call write_old_video_memory      
-	
-	mov flag_for_drawing_frame, 0          
+	call write_old_video_memory               
 
 	;end delete frame
 	;---------------------------------------------------------------------------------------------------------------
@@ -225,6 +206,8 @@ new_9th_interrupt proc
 	pop ax
 	
 	;end of new 9th interrupt
+
+	mov position_in_9th_interrupt, 0
 	
 	db 0eah                                  
 	address_of_old_9th_interrupt dw 0000h
@@ -233,30 +216,106 @@ new_9th_interrupt proc
 	endp    
 ;--------------------------------------------------------------------------------------------------------------
 
+;--------------------------------------------------------------------------------------------------------------
+;											 new_8th_interrupt
+;if (flag_for_drawing_frame == 1) {update_drawing_with_frame (); do_old_8th_interrupt}
+;if (flag_for_drawing_frame == 0) {do_old_8th_interrupt}
+;doesn't print and work with keys if call int 09h
+;
+;Entry: None                                     
+;
+;Exit:  None
+;
+;Destr: None
+;--------------------------------------------------------------------------------------------------------------
 
+new_8th_interrupt proc     
 
+	push ax   
+	push bx
+	push cx 
+	push dx
+	push si
+	push di
+	push ds
+	push es    ;save registers
 
+	push cs
+	pop ds     ;ds = cs
+
+	cmp position_in_9th_interrupt, 1
+	je do_old_8th_interrupt
+
+	;-----------------------------------------------------------------------------------------------------------
+	;check_for_print_frame:
+
+	;mov call_int_09h_from_int_o8h, 0001h
+	;int 09h									 ;call int 09h and give him information, that he cannot work with keys
+	;mov call_int_09h_from_int_o8h, 0000h  
+
+	cmp flag_for_drawing_frame, 0               
+	je  do_old_8th_interrupt                   ;if (flag_for_drawing_frame == 1): {goto update_frame;}
+
+	mov di, 0b800h     ;video segment
+	mov es, di         ;register es for segment address of video memory  (es != const    es == reg)
 	
+	call count_left_high_point
+
+	mov begin_of_frame_in_video_memory, di
 
 
+	push di   ;save di for print registers 
 
+	mov ah, color     ;ah = color   
 
+	mov si, offset frame_style  ;si = address on style of frame
 
+	mov cx, x_size
+	sub cx, 0002d     ;cx = x_size - 2 = len of str with recurring symbol 
 
+	call print_frame  
+
+    mov si, offset list_of_registers    ;si = address on list of registers 
+
+	pop di
+	add di, 0080d * 0002d + 0002d * 0002d  ;di == address of beginning
+
+	mov cx, quantity_of_registers   ;cx = how many registers program must print
+
+	push ax           ;save ax
+	mov bx,  sp   
+	mov ax, quantity_of_registers
+	shl ax, 1
+	add bx, ax        ;bx = sp + quantity_of_registers * 0002d   - by this address in stack on ax. After on bx, cx, dx, ..., es  
+	pop ax
+
+	print_next_register_for_update:
+	call print_list_of_reg
+
+	sub bx, 0002d                 ;address in stack for value next register
+
+	loop print_next_register_for_update      ;while (cx--) {print_next_register ();}
+
+	;---------------------------------------------------------------------------------------------------------------
+	do_old_8th_interrupt:           ;skip new_8th_interrupt
+
+	pop es
+	pop ds
+	pop di
+	pop si
+	pop dx
+	pop cx
+	pop bx
+	pop ax
 	
-
-
-
-
-
-
-
-
-
-
-
-
-
+	;end of new 8th interrupt
+	
+	db 0eah                                  
+	address_of_old_8th_interrupt dw 0000h
+	segment_of_old_8th_interrupt dw 0000h    ;jmp segment_of_old_8th_interrupt:[address_of_old_8th_interrupt]    (call old 8th interrupt)
+    
+	endp    
+;--------------------------------------------------------------------------------------------------------------
 
 
 ;--------------------------------------------------------------------------------------------------------------
@@ -395,41 +454,6 @@ print_line proc
 	ret     
 	endp    
 ;--------------------------------------------------------------------------------------------------------------
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 ;--------------------------------------------------------------------------------------------------------------
 ;											 print_list_of_reg
@@ -578,150 +602,6 @@ translate_value_in_al_to_ascii proc
 	
 ;--------------------------------------------------------------------------------------------------------------
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-;--------------------------------------------------------------------------------------------------------------
-;											 new_8th_interrupt
-;if (flag_for_drawing_frame == 1) {update_drawing_with_frame (); do_old_8th_interrupt}
-;if (flag_for_drawing_frame == 0) {do_old_8th_interrupt}
-;doesn't print and work with keys if call int 09h
-;
-;Entry: None                                     
-;
-;Exit:  None
-;
-;Destr: None
-;--------------------------------------------------------------------------------------------------------------
-
-new_8th_interrupt proc     
-
-	push ax   
-	push bx
-	push cx 
-	push dx
-	push si
-	push di
-	push ds
-	push es    ;save registers
-
-	push cs
-	pop ds     ;ds = cs
-
-	;-----------------------------------------------------------------------------------------------------------
-	;check_for_print_frame:
-
-	;mov call_int_09h_from_int_o8h, 0001h
-	;int 09h									 ;call int 09h and give him information, that he cannot work with keys
-	;mov call_int_09h_from_int_o8h, 0000h  
-
-	cmp flag_for_drawing_frame, 0               
-	je  do_old_8th_interrupt                   ;if (flag_for_drawing_frame == 1): {goto update_frame;}
-
-	mov di, 0b800h     ;video segment
-	mov es, di         ;register es for segment address of video memory  (es != const    es == reg)
-	
-	call count_left_high_point
-
-	mov begin_of_frame_in_video_memory, di
-
-
-	push di   ;save di for print registers 
-
-	mov ah, color     ;ah = color   
-
-	mov si, offset frame_style  ;si = address on style of frame
-
-	mov cx, x_size
-	sub cx, 0002d     ;cx = x_size - 2 = len of str with recurring symbol 
-
-	call print_frame  
-
-    mov si, offset list_of_registers    ;si = address on list of registers 
-
-	pop di
-	add di, 0080d * 0002d + 0002d * 0002d  ;di == address of beginning
-
-	mov cx, quantity_of_registers   ;cx = how many registers program must print
-
-	push ax           ;save ax
-	mov bx,  sp   
-	mov ax, quantity_of_registers
-	shl ax, 1
-	add bx, ax        ;bx = sp + quantity_of_registers * 0002d   - by this address in stack on ax. After on bx, cx, dx, ..., es  
-	pop ax
-
-	print_next_register_for_update:
-	call print_list_of_reg
-
-	sub bx, 0002d                 ;address in stack for value next register
-
-	loop print_next_register_for_update      ;while (cx--) {print_next_register ();}
-
-	;---------------------------------------------------------------------------------------------------------------
-	do_old_8th_interrupt:           ;skip new_8th_interrupt
-
-	pop es
-	pop ds
-	pop di
-	pop si
-	pop dx
-	pop cx
-	pop bx
-	pop ax
-	
-	;end of new 8th interrupt
-	
-	db 0eah                                  
-	address_of_old_8th_interrupt dw 0000h
-	segment_of_old_8th_interrupt dw 0000h    ;jmp segment_of_old_8th_interrupt:[address_of_old_8th_interrupt]    (call old 8th interrupt)
-    
-	endp    
-;--------------------------------------------------------------------------------------------------------------
-
-
-
-
-
-
-
-
-
-
-
-
 ;--------------------------------------------------------------------------------------------------------------
 ;											 save_video_memory
 ;save video memory in buffer before printing frame
@@ -729,7 +609,7 @@ new_8th_interrupt proc
 ;Entry: di = address in video_memory for beginning of frame
 ;       es = segment address on video_memory
 ;		si = index in buffer
-;       ds = segment address of buffer		1
+;       ds = segment address of buffer
 ;
 ;Exit:  None
 ;
@@ -772,14 +652,6 @@ save_video_memory proc
 	endp  
 						
 ;--------------------------------------------------------------------------------------------------------------
-
-
-
-
-
-
-
-
 
 ;--------------------------------------------------------------------------------------------------------------
 ;											 write_old_video_memory
@@ -832,36 +704,6 @@ write_old_video_memory proc
 						
 ;--------------------------------------------------------------------------------------------------------------
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ;--------------------------------------------------------------------------------------------------------------
 ;                                      variables
 .data 
@@ -890,10 +732,10 @@ list_of_registers db 'ax = bx = cx = dx = si = di = ds = es = '
 flag_for_drawing_frame dw 0000h  ;flag == 1  -> 8th interrupt draw new frame (update of frame) and do old 8th interrupt
 								 ;flag == 0  -> only do old 8th interrupt
 
-call_int_09h_from_int_o8h dw 0000h    ; == 1  -> call 9th from 8th
-									  ; == 0  -> call 9th from keyboard
+position_in_9th_interrupt dw 0000h    ; == 1  -> program in 9th interrupt
+									  ; == 0  -> program not in 9th interrupt
 
-buffer dw 0036d * 0014d * 0002d dup (0)     ;buffer for saving of video memory
+buffer dw 0036d * 0014d dup (0)     ;buffer for saving of video memory
 
 begin_of_frame_in_video_memory dw 0000h
 
